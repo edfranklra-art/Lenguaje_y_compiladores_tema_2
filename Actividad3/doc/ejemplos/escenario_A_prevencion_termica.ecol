@@ -1,0 +1,158 @@
+#=====================================================================
+# PROGRAMA ECO-L — Escenario Operativo A
+# TÍTULO:   Prevención de Fuga Térmica y Gestión de Alivio de Carga
+# PLANTA:   ECO-GRID — Sector de Almacenamiento Energético
+# AUTOR:    Operador de Turno - Control de Baterías
+# FECHA:    2026-06-03
+# VERSIÓN:  1.0
+#
+# DESCRIPCIÓN:
+#   Monitoriza de forma continua la temperatura del banco de baterías #3.
+#   Si la temperatura supera 55 °C activa la refrigeración auxiliar,
+#   desconecta las líneas de carga solar y desvía el consumo del sector
+#   industrial a la red comercial de respaldo.
+#   Emite alertas de emergencia si el peligro persiste tras 10 ciclos.
+#=====================================================================
+
+# ── Directivas del sistema ─────────────────────────────────────────
+@modo_seguro;
+@intervalo(3000);
+@timeout(600);
+
+# ── Inicialización del hardware ────────────────────────────────────
+init_grid;
+
+# ── Constantes operativas ──────────────────────────────────────────
+declarar CONSTANTE UMBRAL_CRITICO         como DECIMAL := 55.0;
+declarar CONSTANTE UMBRAL_ADVERTENCIA     como DECIMAL := 45.0;
+declarar CONSTANTE UMBRAL_SEGURO          como DECIMAL := 40.0;
+declarar CONSTANTE BATERIA_OBJETIVO       como ENTERO  := 3;
+declarar CONSTANTE MAX_CICLOS_EMERGENCIA  como ENTERO  := 10;
+declarar CONSTANTE SECTOR_INDUSTRIAL      como ENTERO  := 5;
+declarar CONSTANTE PANEL_SOLAR_PRINCIPAL  como ENTERO  := 1;
+declarar CONSTANTE PANEL_SOLAR_SECUNDARIO como ENTERO  := 2;
+
+# ── Variables de estado ────────────────────────────────────────────
+declarar temp_actual              como DECIMAL  := 0.0;
+declarar ciclos_criticos          como ENTERO   := 0;
+declarar refrigeracion_activa     como BOOLEANO := FALSO;
+declarar carga_solar_desconectada como BOOLEANO := FALSO;
+declarar sector_desviado          como BOOLEANO := FALSO;
+declarar sistema_activo           como BOOLEANO := VERDADERO;
+
+# ── Registro de inicio ─────────────────────────────────────────────
+registrar_evento("Inicio de rutina de monitoreo térmico — Batería B-03");
+mostrar_panel("Sistema de prevención térmica ACTIVO — Monitoreando B-03");
+
+#======================================================================
+# BUCLE PRINCIPAL DE MONITOREO CONTINUO
+#======================================================================
+mientras sistema_activo ejecutar
+
+    # Lectura del sensor térmico de celda
+    temp_actual := leer_temperatura(BATERIA_OBJETIVO);
+    registrar_evento("Lectura térmica B-03: " + temp_actual + " °C");
+
+    #------------------------------------------------------------------
+    # CASO CRÍTICO: Temperatura supera el umbral de seguridad (> 55 °C)
+    #------------------------------------------------------------------
+    si temp_actual > UMBRAL_CRITICO entonces
+
+        ciclos_criticos := ciclos_criticos + 1;
+        emitir_alerta(3, "CRÍTICO: Temperatura B-03 = " + temp_actual
+                         + " °C — Ciclo " + ciclos_criticos);
+
+        # Paso 1: Activar sistemas de refrigeración auxiliar
+        si NO refrigeracion_activa entonces
+            activar_refrigeracion(BATERIA_OBJETIVO);
+            refrigeracion_activa := VERDADERO;
+            registrar_evento("Refrigeración auxiliar ACTIVADA en B-03");
+            mostrar_panel(">> Refrigeración de emergencia ENCENDIDA <<");
+        fin_si
+
+        # Paso 2: Desconectar líneas de carga solar para detener
+        #          el ingreso de energía térmica al sistema
+        si NO carga_solar_desconectada entonces
+            desconectar_carga_solar(PANEL_SOLAR_PRINCIPAL);
+            desconectar_carga_solar(PANEL_SOLAR_SECUNDARIO);
+            carga_solar_desconectada := VERDADERO;
+            registrar_evento("Carga solar DESCONECTADA — Paneles 1 y 2");
+            mostrar_panel(">> Ingreso solar DETENIDO por seguridad <<");
+        fin_si
+
+        # Paso 3: Desviar el consumo del sector industrial hacia la
+        #          red comercial de respaldo para aliviar el estrés
+        si NO sector_desviado entonces
+            conmutar_linea(SECTOR_INDUSTRIAL, FALSO);
+            conectar_red_comercial(SECTOR_INDUSTRIAL);
+            sector_desviado := VERDADERO;
+            registrar_evento("Sector industrial desviado a red comercial");
+            mostrar_panel(">> Sector 5 operando con RED COMERCIAL <<");
+        fin_si
+
+        # Verificación: Si el peligro persiste tras MAX_CICLOS_EMERGENCIA
+        si ciclos_criticos >= MAX_CICLOS_EMERGENCIA entonces
+            emitir_alerta(4, "EMERGENCIA: Fuga térmica NO contenida en B-03"
+                          + " tras " + MAX_CICLOS_EMERGENCIA
+                          + " ciclos. Requiere intervención MANUAL.");
+            registrar_evento("ALERTA MÁXIMA: Procedimiento de emergencia activado");
+            mostrar_panel("!!! EVACUAR ZONA DE BATERÍAS — INTERVENCIÓN MANUAL REQUERIDA !!!");
+            sistema_activo := FALSO;
+        fin_si
+
+    #------------------------------------------------------------------
+    # CASO ADVERTENCIA: Temperatura elevada pero no crítica (45–55 °C)
+    #------------------------------------------------------------------
+    sino_si temp_actual > UMBRAL_ADVERTENCIA entonces
+        emitir_alerta(2, "ADVERTENCIA: Temperatura B-03 = "
+                      + temp_actual + " °C — Monitoreo intensivo");
+        mostrar_panel("Temperatura elevada en B-03 — Vigilancia activa");
+
+    #------------------------------------------------------------------
+    # CASO RECUPERACIÓN: Temperatura regresa a nivel seguro (< 40 °C)
+    #------------------------------------------------------------------
+    sino_si temp_actual < UMBRAL_SEGURO entonces
+
+        si refrigeracion_activa O carga_solar_desconectada O sector_desviado entonces
+            registrar_evento("Temperatura normalizada en B-03: " + temp_actual + " °C");
+            emitir_alerta(1, "INFO: Temperatura B-03 estabilizada. Restaurando operaciones.");
+
+            # Restaurar refrigeración
+            si refrigeracion_activa entonces
+                desactivar_refrigeracion(BATERIA_OBJETIVO);
+                refrigeracion_activa := FALSO;
+                registrar_evento("Refrigeración auxiliar DESACTIVADA");
+            fin_si
+
+            # Restaurar carga solar
+            si carga_solar_desconectada entonces
+                conectar_carga_solar(PANEL_SOLAR_PRINCIPAL);
+                conectar_carga_solar(PANEL_SOLAR_SECUNDARIO);
+                carga_solar_desconectada := FALSO;
+                registrar_evento("Carga solar RECONECTADA — Paneles 1 y 2");
+            fin_si
+
+            # Restaurar sector industrial a la microred
+            si sector_desviado entonces
+                desconectar_red_comercial(SECTOR_INDUSTRIAL);
+                conmutar_linea(SECTOR_INDUSTRIAL, VERDADERO);
+                sector_desviado := FALSO;
+                registrar_evento("Sector industrial restaurado a microred local");
+            fin_si
+
+            ciclos_criticos := 0;
+            mostrar_panel("Operaciones normales RESTAURADAS — B-03 estable");
+        fin_si
+
+    #------------------------------------------------------------------
+    # CASO NORMAL: Temperatura dentro de parámetros operativos
+    #------------------------------------------------------------------
+    sino
+        mostrar_panel("B-03 operando normalmente — Temp: " + temp_actual + " °C");
+    fin_si
+
+fin_mientras
+
+# ── Secuencia de apagado seguro ────────────────────────────────────
+registrar_evento("Fin de rutina de monitoreo térmico — Apagado del sistema");
+apagar_grid;

@@ -36,6 +36,7 @@ Solo se exponen las operaciones válidas sobre el hardware ECO-GRID a través de
 El lenguaje abstrae los siguientes componentes del sistema físico real:
 
 | Componente                     | ID en ECO-L         | Descripción                                     |
+|--------------------------------|---------------------|-------------------------------------------------|
 | Arreglos de Paneles Solares    | `fuente_id` (1–N)   | Generadores primarios de energía fotovoltaica   |
 | Turbinas Eólicas               | `fuente_id` (N+1–M) | Generadores primarios de energía eólica         |
 | Bancos de Baterías de Litio    | `bateria_id` (1–K)  | Almacenamiento de excedentes de carga           |
@@ -71,14 +72,15 @@ El operador **nunca interactúa directamente** con el driver. Toda comunicación
 
 ## 5. Características Generales
 
-| Característica            | Valor                                           |
-| **Paradigma**             | Imperativo, secuencial                          |
-| **Orientación**           | Dominio específico (DSL)                        |
-| **Tipado**                | Fuerte, estático, explícito                     |
-| **Idioma de la sintaxis** | Español estructurado                            |
-| **Modelo de ejecución**   | Interpretado / traducido a comandos de driver   |
-| **Gestión de errores**    | Detención segura ante error léxico o sintáctico |
-| **Extensión de archivo**  | `.ecol`                                         |
+| Característica            | Valor                                               |
+|---------------------------|-----------------------------------------------------|
+| **Paradigma**             | Imperativo, secuencial                              |
+| **Orientación**           | Dominio específico (DSL)                            |
+| **Tipado**                | Fuerte, estático, explícito                         |
+| **Idioma de la sintaxis** | Español estructurado                                |
+| **Modelo de ejecución**   | Interpretado / traducido a comandos de driver       |
+| **Gestión de errores**    | Detención segura ante error léxico o sintáctico     |
+| **Extensión de archivo**  | `.ecol`                                             |
 
 ---
 
