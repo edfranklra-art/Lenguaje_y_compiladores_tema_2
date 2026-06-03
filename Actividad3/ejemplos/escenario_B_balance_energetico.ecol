@@ -1,0 +1,211 @@
+#=====================================================================
+# PROGRAMA ECO-L — Escenario Operativo B
+# TÍTULO:   Balance de Carga y Optimización Energética Autónoma
+# PLANTA:   ECO-GRID — Centro de Control de Distribución
+# 
+#
+# DESCRIPCIÓN:
+#   Evalúa el estado de carga de los bancos de baterías.
+#   Si la carga es óptima (> 90%) y la generación solar excede la
+#   demanda, inyecta el excedente a la red pública.
+#   Si la carga es crítica (< 20%) en horario nocturno, aísla los
+#   sectores no esenciales para preservar el suministro en áreas
+#   médicas y de servidores críticos.
+#=====================================================================
+
+# ── Directivas del sistema ─────────────────────────────────────────
+@modo_seguro;
+@intervalo(5000);
+@timeout(3600);
+
+# ── Inicialización del hardware ────────────────────────────────────
+init_grid;
+
+# ── Constantes de configuración ────────────────────────────────────
+declarar CONSTANTE CARGA_OPTIMA          como DECIMAL := 90.0;
+declarar CONSTANTE CARGA_CRITICA         como DECIMAL := 20.0;
+declarar CONSTANTE CARGA_RECUPERACION    como DECIMAL := 35.0;
+declarar CONSTANTE HORA_INICIO_NOCTURNO  como ENTERO  := 18;
+declarar CONSTANTE HORA_FIN_NOCTURNO     como ENTERO  := 6;
+declarar CONSTANTE EXCEDENTE_MINIMO_KW   como DECIMAL := 5.0;
+
+# ── Identificadores de dispositivos ───────────────────────────────
+declarar CONSTANTE BATERIA_PRINCIPAL  como ENTERO := 1;
+declarar CONSTANTE BATERIA_RESPALDO   como ENTERO := 2;
+declarar CONSTANTE FUENTE_SOLAR       como ENTERO := 1;
+declarar CONSTANTE FUENTE_EOLICA      como ENTERO := 2;
+
+# ── Identificadores de sectores de consumo ────────────────────────
+declarar CONSTANTE SECTOR_PRODUCCION    como ENTERO := 1;
+declarar CONSTANTE SECTOR_ILUMINACION   como ENTERO := 2;
+declarar CONSTANTE SECTOR_CLIMATIZACION como ENTERO := 3;
+declarar CONSTANTE SECTOR_MEDICO        como ENTERO := 4;
+declarar CONSTANTE SECTOR_SERVIDORES    como ENTERO := 5;
+declarar CONSTANTE SECTOR_CAFETERIA     como ENTERO := 6;
+declarar CONSTANTE SECTOR_OFICINAS      como ENTERO := 7;
+
+# ── Variables de estado operativo ──────────────────────────────────
+declarar carga_bateria_ppal  como DECIMAL  := 0.0;
+declarar carga_bateria_resp  como DECIMAL  := 0.0;
+declarar generacion_solar    como DECIMAL  := 0.0;
+declarar generacion_eolica   como DECIMAL  := 0.0;
+declarar generacion_total    como DECIMAL  := 0.0;
+declarar demanda_total       como DECIMAL  := 0.0;
+declarar excedente_kw        como DECIMAL  := 0.0;
+declarar hora_actual         como ENTERO   := 0;
+declarar es_horario_nocturno como BOOLEANO := FALSO;
+declarar sectores_aislados   como BOOLEANO := FALSO;
+declarar inyeccion_activa    como BOOLEANO := FALSO;
+declarar sistema_operativo   como BOOLEANO := VERDADERO;
+
+# ── Registro de inicio ─────────────────────────────────────────────
+registrar_evento("Inicio de rutina de balance y optimización energética");
+mostrar_panel("Sistema de optimización ECO-GRID ACTIVO");
+
+#======================================================================
+# BUCLE PRINCIPAL DE BALANCE ENERGÉTICO
+#======================================================================
+mientras sistema_operativo ejecutar
+
+    # ── Fase 1: Recolección de datos de sensores ─────────────────────
+    carga_bateria_ppal := estado_carga(BATERIA_PRINCIPAL);
+    carga_bateria_resp := estado_carga(BATERIA_RESPALDO);
+    generacion_solar   := leer_generacion(FUENTE_SOLAR);
+    generacion_eolica  := leer_generacion(FUENTE_EOLICA);
+    generacion_total   := generacion_solar + generacion_eolica;
+    hora_actual        := obtener_hora();
+
+    # Calcular demanda total sumando todos los sectores activos
+    demanda_total := 0.0;
+    para sector_id desde 1 hasta 7 ejecutar
+        demanda_total := demanda_total + leer_demanda(sector_id);
+    fin_para
+
+    # Determinar si estamos en horario nocturno (18:00 – 06:00)
+    si hora_actual >= HORA_INICIO_NOCTURNO O hora_actual < HORA_FIN_NOCTURNO entonces
+        es_horario_nocturno := VERDADERO;
+    sino
+        es_horario_nocturno := FALSO;
+    fin_si
+
+    registrar_evento("Estado: Carga=" + carga_bateria_ppal
+                     + "% | Gen=" + generacion_total
+                     + " kW | Dem=" + demanda_total
+                     + " kW | Hora=" + hora_actual);
+
+    #==================================================================
+    # CASO A: Carga óptima + generación excede demanda → INYECTAR
+    #==================================================================
+    si carga_bateria_ppal > CARGA_OPTIMA Y generacion_total > demanda_total entonces
+
+        excedente_kw := generacion_total - demanda_total;
+        mostrar_panel("Excedente detectado: " + excedente_kw + " kW disponibles");
+
+        # Verificar que el excedente justifica la inyección (mínimo 5 kW)
+        si excedente_kw > EXCEDENTE_MINIMO_KW entonces
+            inyectar_excedente(excedente_kw);
+            inyeccion_activa := VERDADERO;
+            registrar_evento("INYECCIÓN a red pública: " + excedente_kw + " kW");
+            emitir_alerta(1, "INFO: Inyectando " + excedente_kw
+                          + " kW a red pública — Batería al " + carga_bateria_ppal + "%");
+            mostrar_panel(">> VENDIENDO " + excedente_kw + " kW a la red pública <<");
+        sino
+            mostrar_panel("Excedente mínimo (" + excedente_kw + " kW) — Sin inyección");
+        fin_si
+
+        # Si los sectores estaban aislados, restaurar operaciones normales
+        si sectores_aislados entonces
+            conmutar_linea(SECTOR_CAFETERIA, VERDADERO);
+            conmutar_linea(SECTOR_OFICINAS, VERDADERO);
+            conmutar_linea(SECTOR_CLIMATIZACION, VERDADERO);
+            conmutar_linea(SECTOR_ILUMINACION, VERDADERO);
+            sectores_aislados := FALSO;
+            registrar_evento("Sectores no esenciales RESTAURADOS — Carga recuperada");
+            emitir_alerta(1, "INFO: Todos los sectores reconectados a la microred");
+            mostrar_panel("Sectores no esenciales RESTAURADOS");
+        fin_si
+
+    #==================================================================
+    # CASO B: Carga crítica + horario nocturno → AISLAR sectores
+    #==================================================================
+    sino_si carga_bateria_ppal < CARGA_CRITICA Y es_horario_nocturno entonces
+
+        emitir_alerta(3, "CRÍTICO: Batería principal al " + carga_bateria_ppal
+                      + "% en horario nocturno — Protocolo de aislamiento ACTIVO");
+        registrar_evento("Protocolo de aislamiento nocturno ACTIVADO");
+
+        # Aislar sectores no esenciales para preservar suministro crítico
+        si NO sectores_aislados entonces
+            mostrar_panel(">> AISLANDO sectores no esenciales <<");
+
+            conmutar_linea(SECTOR_CAFETERIA, FALSO);
+            registrar_evento("Sector CAFETERÍA aislado de la microred");
+
+            conmutar_linea(SECTOR_OFICINAS, FALSO);
+            registrar_evento("Sector OFICINAS aislado de la microred");
+
+            conmutar_linea(SECTOR_CLIMATIZACION, FALSO);
+            registrar_evento("Sector CLIMATIZACIÓN aislado de la microred");
+
+            conmutar_linea(SECTOR_ILUMINACION, FALSO);
+            registrar_evento("Sector ILUMINACIÓN NO ESENCIAL aislado");
+
+            sectores_aislados := VERDADERO;
+
+            # Confirmar protección de sectores críticos
+            emitir_alerta(2, "Sectores críticos PROTEGIDOS: Médico (S4) y Servidores (S5)");
+            mostrar_panel("ÁREAS MÉDICAS y SERVIDORES con suministro GARANTIZADO");
+        fin_si
+
+        # Si la inyección estaba activa, detenerla para conservar energía
+        si inyeccion_activa entonces
+            inyectar_excedente(0.0);
+            inyeccion_activa := FALSO;
+            registrar_evento("Inyección a red pública DETENIDA — Modo conservación");
+        fin_si
+
+        # Verificar si la batería de respaldo puede asistir
+        si carga_bateria_resp > CARGA_CRITICA entonces
+            emitir_alerta(1, "INFO: Batería de respaldo disponible al "
+                          + carga_bateria_resp + "%");
+        sino
+            emitir_alerta(4, "EMERGENCIA: Ambas baterías en nivel crítico. "
+                          + "Principal=" + carga_bateria_ppal
+                          + "% Respaldo=" + carga_bateria_resp + "%");
+            mostrar_panel("!!! ALERTA MÁXIMA: Reserva energética casi agotada !!!");
+        fin_si
+
+    #==================================================================
+    # CASO C: Carga en recuperación — Monitoreo preventivo
+    #==================================================================
+    sino_si carga_bateria_ppal < CARGA_RECUPERACION entonces
+        emitir_alerta(2, "ADVERTENCIA: Batería principal al "
+                      + carga_bateria_ppal + "% — Nivel bajo");
+        mostrar_panel("Batería en proceso de carga — Nivel: " + carga_bateria_ppal + "%");
+
+    #==================================================================
+    # CASO D: Operación normal — Reporte de estado
+    #==================================================================
+    sino
+        mostrar_panel("Operación normal | Bat: " + carga_bateria_ppal
+                      + "% | Gen: " + generacion_total
+                      + " kW | Dem: " + demanda_total + " kW");
+
+        # Restaurar sectores si la carga se recuperó lo suficiente
+        si sectores_aislados Y carga_bateria_ppal > CARGA_RECUPERACION entonces
+            conmutar_linea(SECTOR_CAFETERIA, VERDADERO);
+            conmutar_linea(SECTOR_OFICINAS, VERDADERO);
+            conmutar_linea(SECTOR_CLIMATIZACION, VERDADERO);
+            conmutar_linea(SECTOR_ILUMINACION, VERDADERO);
+            sectores_aislados := FALSO;
+            registrar_evento("Sectores no esenciales restaurados — Carga suficiente");
+            mostrar_panel("Todos los sectores RECONECTADOS a la microred");
+        fin_si
+    fin_si
+
+fin_mientras
+
+# ── Secuencia de apagado seguro ────────────────────────────────────
+registrar_evento("Fin de rutina de balance y optimización — Apagado del sistema");
+mostrar_panel("Sistema de optimización ECO-GRID FINALIZADO");
+apagar_grid;
