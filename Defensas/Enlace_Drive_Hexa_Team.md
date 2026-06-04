@@ -1,4 +1,3 @@
-Defensas/ enlaces
-Defensa Franyibeth Palma 31564549: 
-https://drive.google.com/file/d/1-RDABVfJmuA-3D3wD1gCePQuONxP3CW-/view?usp=drivesdk
-
+Defensas/ enlace
+Grupo Hexa Team
+https://drive.google.com/drive/folders/1c4_oXEpt5MmG9Cj5zzwdeGI5KM0ngLST?usp=drive_link
